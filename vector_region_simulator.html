@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ベクトルの存在範囲シミュレーター</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:#172033;background:#f5f7fb}
+*{box-sizing:border-box}body{margin:0;padding:16px;max-width:980px;margin-inline:auto}
+h1{font-size:1.25rem;margin:4px 0 14px}.panel{background:white;border:1px solid #dce2ec;border-radius:14px;padding:14px;margin:12px 0}
+h2{font-size:1rem;margin:0 0 10px}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
+input[type=number]{width:78px;padding:8px;border:1px solid #c7cfdb;border-radius:8px;font-size:16px}
+input[type=checkbox]{width:19px;height:19px;vertical-align:middle}
+label{display:inline-flex;align-items:center;gap:6px}
+.vector{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vector label{font-weight:600}.bound{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:6px 0}
+.muted{color:#657187;font-size:.88rem}.controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input[type=range]{width:100%}
+button{border:0;border-radius:9px;padding:9px 13px;background:#e8edf6;color:#172033;font-size:15px}
+#plot{width:100%;height:auto;aspect-ratio:700/460;display:block;overflow:hidden;background:#fff;border:1px solid #e0e5ed;border-radius:10px;touch-action:pan-y}
+.status{font-size:.9rem;color:#46536a;margin-top:8px}
+@media(max-width:560px){body{padding:10px}.vector,.controls{grid-template-columns:1fr}.panel{padding:12px}h1{font-size:1.12rem}}
+</style>
+</head>
+<body>
+<h1>ベクトルの終点の存在範囲</h1>
+<div class="panel">
+<h2>1. 基準となるベクトル</h2>
+<div class="vector">
+<div><label>ベクトル a　=( <input id="ax" type="number" step="0.5" value="2"> , <input id="ay" type="number" step="0.5" value="0.5"> )</label></div>
+<div><label>ベクトル b　=( <input id="bx" type="number" step="0.5" value="0.5"> , <input id="by" type="number" step="0.5" value="2"> )</label></div>
+</div>
+<div class="row"><label><input id="showB" type="checkbox" checked> ベクトル b を表示</label></div>
+</div>
+<div class="panel">
+<h2>2. 媒介変数の条件</h2>
+<div class="row"><strong>s の範囲</strong></div>
+<div class="bound"><label><input id="sLoOn" type="checkbox" checked> 下端</label><input id="sLo" type="number" value="0" step="0.5"><label><input id="sHiOn" type="checkbox"> 上端</label><input id="sHi" type="number" value="3" step="0.5"></div>
+<div class="row"><strong>t の範囲</strong></div>
+<div class="bound"><label><input id="tLoOn" type="checkbox" checked> 下端</label><input id="tLo" type="number" value="0" step="0.5"><label><input id="tHiOn" type="checkbox"> 上端</label><input id="tHi" type="number" value="3" step="0.5"></div>
+<div class="row"><strong>s + t の範囲</strong></div>
+<div class="bound"><label><input id="sumLoOn" type="checkbox"> 下端</label><input id="sumLo" type="number" value="1" step="0.5"><label><input id="sumHiOn" type="checkbox"> 上端</label><input id="sumHi" type="number" value="2" step="0.5"></div>
+<p class="muted">チェックを入れた端だけが条件として有効になります。3種類の条件はすべて同時に満たすものとして扱います。</p>
+</div>
+<div class="panel">
+<h2>3. 点 P を動かす</h2>
+<div class="controls">
+<div><label for="sRange">s = <output id="sOut">0</output></label><input id="sRange" type="range" min="-3" max="3" step=".01" value="0"></div>
+<div><label for="tRange">t = <output id="tOut">0</output></label><input id="tRange" type="range" min="-3" max="3" step=".01" value="0"></div>
+</div>
+<div class="row"><label>表示倍率 <input id="zoom" type="range" min="0.5" max="3" step="0.05" value="1"></label><output id="zoomOut">1.00</output></div>
+<div class="row"><button id="reset">係数を初期値に戻す</button><label><input id="lockRegion" type="checkbox"> 存在範囲内に拘束（もう一方の係数を自動調整）</label></div>
+<p class="muted">拘束を有効にするとP が存在範囲から出ないようにします。</p>
+</div>
+<div class="panel">
+<h2>4. ベクトル平面上の存在範囲(p&#x20D7; = sa&#x20D7; + tb&#x20D7;)</h2>
+<svg id="plot" width="700" height="460" viewBox="0 0 700 460" preserveAspectRatio="xMidYMid meet" role="img" aria-label="ベクトルと終点の存在範囲"></svg>
+<div id="status" class="status">条件を満たす領域を表示します。</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const ids=['ax','ay','bx','by','sLo','sHi','tLo','tHi','sumLo','sumHi','sLoOn','sHiOn','tLoOn','tHiOn','sumLoOn','sumHiOn','showB'];
+ids.forEach(id=>{$(id).addEventListener('input',()=>{updateSliderBounds();if($('lockRegion').checked)keepInside('s');draw();});$(id).addEventListener('change',()=>{updateSliderBounds();if($('lockRegion').checked)keepInside('s');draw();});});
+const sRange=$('sRange'),tRange=$('tRange');$('zoom').addEventListener('input',draw);
+sRange.addEventListener('input',()=>{ if($('lockRegion').checked) keepInside('s'); $('sOut').value=sRange.value; draw();});
+tRange.addEventListener('input',()=>{ if($('lockRegion').checked) keepInside('t'); $('tOut').value=tRange.value; draw();});
+$('lockRegion').addEventListener('change',()=>{ if($('lockRegion').checked) keepInside('s'); draw(); });
+$('reset').addEventListener('click',()=>{updateSliderBounds();sRange.value=0;tRange.value=0;$('sOut').value='0';$('tOut').value='0';if($('lockRegion').checked)keepInside('s');draw();});
+const num=id=>Number($(id).value);
+
+function bounds(){
+ const inf=1e6;
+ return {
+  sL:$('sLoOn').checked?num('sLo'):-inf, sH:$('sHiOn').checked?num('sHi'):inf,
+  tL:$('tLoOn').checked?num('tLo'):-inf, tH:$('tHiOn').checked?num('tHi'):inf,
+  qL:$('sumLoOn').checked?num('sumLo'):-inf, qH:$('sumHiOn').checked?num('sumHi'):inf
+ };
+}
+function clamp(x,lo,hi){return Math.max(lo,Math.min(hi,x));}
+// driver側を優先して動かし、相手側を最も近い実行可能値に調整する
+function updateSliderBounds(){
+ const b=bounds(),fallback=5;
+ const finite=(x)=>Number.isFinite(x)&&Math.abs(x)<1e6;
+ let sL=b.sL,sH=b.sH,tL=b.tL,tH=b.tH;
+ // Derive tighter bounds from the sum band if the opposite coefficient is bounded.
+ if(finite(b.qL)&&finite(tH))sL=Math.max(sL,b.qL-tH);
+ if(finite(b.qH)&&finite(tL))sH=Math.min(sH,b.qH-tL);
+ if(finite(b.qL)&&finite(sH))tL=Math.max(tL,b.qL-sH);
+ if(finite(b.qH)&&finite(sL))tH=Math.min(tH,b.qH-sL);
+ const fit=(lo,hi,current)=>{
+   if(!finite(lo)&&!finite(hi))return [-fallback,fallback];
+   if(!finite(lo))lo=hi-fallback;
+   if(!finite(hi))hi=lo+fallback;
+   if(lo===hi){lo-=.5;hi+=.5;}
+   return [lo,hi];
+ };
+ [sL,sH]=fit(sL,sH,Number(sRange.value));[tL,tH]=fit(tL,tH,Number(tRange.value));
+ sRange.min=sL;sRange.max=sH;tRange.min=tL;tRange.max=tH;
+}
+function keepInside(driver){
+ const b=bounds(),finite=(x)=>Number.isFinite(x)&&Math.abs(x)<1e6;
+ let s=Number(sRange.value),t=Number(tRange.value);
+ // finite slider bounds are the operational window for otherwise-unbounded parameters
+ const sL=Math.max(b.sL,Number(sRange.min)),sH=Math.min(b.sH,Number(sRange.max));
+ const tL=Math.max(b.tL,Number(tRange.min)),tH=Math.min(b.tH,Number(tRange.max));
+ if(sL>sH||tL>tH||b.qL>b.qH)return;
+ if(driver==='s'){
+  const feasibleL=Math.max(sL,b.qL-tH),feasibleH=Math.min(sH,b.qH-tL);
+  if(feasibleL>feasibleH)return;
+  s=clamp(s,feasibleL,feasibleH);
+  const lo=Math.max(tL,b.qL-s),hi=Math.min(tH,b.qH-s);
+  if(lo>hi)return;t=clamp(t,lo,hi);
+ }else{
+  const feasibleL=Math.max(tL,b.qL-sH),feasibleH=Math.min(tH,b.qH-sL);
+  if(feasibleL>feasibleH)return;
+  t=clamp(t,feasibleL,feasibleH);
+  const lo=Math.max(sL,b.qL-t),hi=Math.min(sH,b.qH-t);
+  if(lo>hi)return;s=clamp(s,lo,hi);
+ }
+ sRange.value=s;tRange.value=t;$('sOut').value=Number(s).toFixed(2);$('tOut').value=Number(t).toFixed(2);
+}
+
+function clip(poly,A,B,C){ // A*s+B*t <= C
+ let out=[];
+ for(let i=0;i<poly.length;i++){
+  const p=poly[i],q=poly[(i+1)%poly.length],fp=A*p[0]+B*p[1]-C,fq=A*q[0]+B*q[1]-C;
+  const pin=fp<=1e-9,qin=fq<=1e-9;
+  if(pin&&qin)out.push(q);
+  else if(pin&&!qin){let u=fp/(fp-fq);out.push([p[0]+u*(q[0]-p[0]),p[1]+u*(q[1]-p[1])]);}
+  else if(!pin&&qin){let u=fp/(fp-fq);out.push([p[0]+u*(q[0]-p[0]),p[1]+u*(q[1]-p[1])],q);}
+ }
+ return out;
+}
+function region(poly){
+ const b=bounds();
+ if(b.sL>b.sH||b.tL>b.tH||b.qL>b.qH||!poly)return [];
+ let p=poly.slice();
+ if($('sLoOn').checked)p=clip(p,-1,0,-num('sLo'));
+ if($('sHiOn').checked)p=clip(p,1,0,num('sHi'));
+ if($('tLoOn').checked)p=clip(p,0,-1,-num('tLo'));
+ if($('tHiOn').checked)p=clip(p,0,1,num('tHi'));
+ if($('sumLoOn').checked)p=clip(p,-1,-1,-num('sumLo'));
+ if($('sumHiOn').checked)p=clip(p,1,1,num('sumHi'));
+ return p;
+}
+function draw(){
+ const svg=$('plot'),s=Number(sRange.value),t=Number(tRange.value);
+ $('sOut').value=s.toFixed(2);$('tOut').value=t.toFixed(2);
+ const a=[num('ax'),num('ay')],b=[num('bx'),num('by')],det=a[0]*b[1]-a[1]*b[0];
+ const W=700,H=460,m=38,zoom=Number($('zoom').value);
+ $('zoomOut').value=zoom.toFixed(2);
+ // Fixed world window; zoom changes it, never the point's location.
+ const halfX=7/zoom,halfY=4.6/zoom,xmin=-halfX,xmax=halfX,ymin=-halfY,ymax=halfY;
+ const scale=Math.min((W-2*m)/(xmax-xmin),(H-2*m)/(ymax-ymin));
+ const X=x=>W/2+x*scale,Y=y=>H/2-y*scale;
+ let poly=[],points=[];
+ if(Math.abs(det)>1e-9){
+   // Transform the four corners of the visible world window back to (s,t).
+   const inv=(x,y)=>[(b[1]*x-b[0]*y)/det,(-a[1]*x+a[0]*y)/det];
+   // Use the ordered inverse-transformed viewport quadrilateral, not its coefficient-space bounding box.
+   const cs=[inv(xmin,ymin),inv(xmax,ymin),inv(xmax,ymax),inv(xmin,ymax)];
+   poly=region(cs);points=poly.map(([u,v])=>[u*a[0]+v*b[0],u*a[1]+v*b[1]]);
+ }
+ const P=[s*a[0]+t*b[0],s*a[1]+t*b[1]];
+ let z='';
+ // grid and axes
+ const niceStep=(span)=>{const raw=span/12,p=Math.pow(10,Math.floor(Math.log10(Math.max(raw,1e-6)))),f=raw/p;return (f<1.5?1:f<3?2:f<7?5:10)*p;};
+ const gx=niceStep(xmax-xmin),gy=niceStep(ymax-ymin);
+ for(let k=Math.ceil(xmin/gx)*gx;k<=xmax+1e-9;k+=gx){z+=`<line x1="${X(k)}" y1="${m}" x2="${X(k)}" y2="${H-m}" stroke="#edf0f5"/><text x="${X(k)+3}" y="${Y(0)+15}" font-size="11" fill="#8792a4">${k}</text>`;}
+ for(let k=Math.ceil(ymin/gy)*gy;k<=ymax+1e-9;k+=gy){z+=`<line x1="${m}" y1="${Y(k)}" x2="${W-m}" y2="${Y(k)}" stroke="#edf0f5"/><text x="${X(0)+5}" y="${Y(k)-3}" font-size="11" fill="#8792a4">${k}</text>`;}
+ z+=`<line x1="${m}" y1="${Y(0)}" x2="${W-m}" y2="${Y(0)}" stroke="#657187" stroke-width="1.5"/><line x1="${X(0)}" y1="${m}" x2="${X(0)}" y2="${H-m}" stroke="#657187" stroke-width="1.5"/>`;
+ const line=(v,color,label)=>{z+=`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(v[0])}" y2="${Y(v[1])}" stroke="${color}" stroke-width="3"/><text x="${X(v[0])+7}" y="${Y(v[1])-7}" font-size="15" fill="${color}" font-weight="bold">${label}</text>`};
+ if(poly.length>=3&&Math.abs(det)>1e-9){
+  z+=`<polygon points="${points.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="#35a66b" fill-opacity=".22" stroke="none"/>`;
+ }else if(poly.length>0&&Math.abs(det)>1e-9){
+  z+=`<polyline points="${points.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="none" stroke="#26965b" stroke-width="3"/>`;
+ }
+ line(a,'#2673d9','a');if($('showB').checked)line(b,'#d97724','b');
+ if(P.every(Number.isFinite))z+=`<circle cx="${X(P[0])}" cy="${Y(P[1])}" r="7" fill="#d12e52" stroke="white" stroke-width="2"/><text x="${X(P[0])+10}" y="${Y(P[1])-10}" fill="#d12e52" font-size="15" font-weight="bold">P</text>`;
+ svg.innerHTML=`<defs><clipPath id="plotClip"><rect x="${m}" y="${m}" width="${W-2*m}" height="${H-2*m}"/></clipPath></defs><g clip-path="url(#plotClip)">${z}</g>`;
+ let msg=poly.length===0?'条件を同時に満たす (s,t) はありません。':Math.abs(det)<1e-9?'a と b が平行なため、存在範囲は直線上（または一点）になります。':poly.length<3?'存在範囲は線分または一点です。':'緑色の部分が存在範囲です。';
+ const lo=[];if($('sLoOn').checked&&$('sHiOn').checked&&num('sLo')>num('sHi'))lo.push('sの上下端が逆');if($('tLoOn').checked&&$('tHiOn').checked&&num('tLo')>num('tHi'))lo.push('tの上下端が逆');if($('sumLoOn').checked&&$('sumHiOn').checked&&num('sumLo')>num('sumHi'))lo.push('s+tの上下端が逆');
+ $('status').textContent=lo.length?lo.join('、')+'です。':msg;
+}
+updateSliderBounds();draw();
+</script>
+</body></html>
